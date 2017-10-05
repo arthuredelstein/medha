@@ -1,0 +1,73 @@
+import mmcorej.TaggedImage;
+import org.micromanager.imagedisplay.DisplayWindow;
+import org.micromanager.MMStudio.DisplayImageRoutine;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+AtomicBoolean running = new AtomicBoolean(false);
+
+void runDisplays() {
+  BlockingQueue liveImageQueue = new LinkedBlockingQueue();
+  // Assuming we're using a Multi-Camera device.
+  String multicamera = mmc.getCameraDevice();
+  // Run a gui display thread that receives images that have been
+  // processed and displays them in a separate window according
+  // to CameraChannelName.
+  gui.runDisplayThread(liveImageQueue, new DisplayImageRoutine() {
+    public void show(TaggedImage image) {
+      try {
+        String cameraChannelName = image.tags.getString(multicamera + "-CameraChannelName");
+        if (!gui.acquisitionExists(cameraChannelName)) {
+        	 // Open single-frame acquisition window
+			 gui.openAcquisition(cameraChannelName, "", 1, 1, 1, 1, true, false);
+        }
+        // Always display the image in the first frame to give live-mode effect.
+        gui.addImageToAcquisition(cameraChannelName, 0, 0, 0, 0, image);
+      } catch (e) {
+      	print(e.message);
+      }
+    }
+  });
+
+  // Start a standalone thread for grabbing images and feeding them
+  // to the data processor queue.
+  new Thread() {
+    public void run() {
+      mmc.stopSequenceAcquisition();
+      mmc.startContinuousSequenceAcquisition(0);
+      while(running.get()) {
+        Thread.sleep(30);
+        for (int i = 0; i < 3; ++i) {
+          TaggedImage image = mmc.getNBeforeLastTaggedImage(i);
+    	    liveImageQueue.put(image);
+        }
+      }
+      mmc.stopSequenceAcquisition();
+      liveImageQueue.put(TaggedImageQueue.POISON);
+    }
+  }.start();
+}
+
+// Show an window with a start button
+void showGUI() {
+  JFrame frame = new JFrame("multidisplay");
+  JButton button = new JButton("go");
+  button.addActionListener(new ActionListener() { 
+    public void actionPerformed(ActionEvent e) { 
+    	if (running.get()) {
+    		running.set(false);
+    		button.setText("go");
+    	} else {
+    		running.set(true);
+    		button.setText("stop");
+	      runDisplays();
+    	}
+    } 
+  });
+  frame.setBounds(200, 200, 200, 200);
+  frame.add(button);
+  frame.show();
+}
+
+showGUI();
