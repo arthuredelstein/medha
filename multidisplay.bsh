@@ -8,7 +8,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 AtomicBoolean running = new AtomicBoolean(false);
 
 void runDisplays() {
-  BlockingQueue liveImageQueue = new LinkedBlockingQueue();
+  final int numChannels = mmc.getNumberOfCameraChannels();
+  BlockingQueue liveImageQueue = new LinkedBlockingQueue(2 * numChannels);
   // Assuming we're using a Multi-Camera device.
   String multicamera = mmc.getCameraDevice();
   // Run a gui display thread that receives images that have been
@@ -34,14 +35,15 @@ void runDisplays() {
   // to the data processor queue.
   new Thread() {
     public void run() {
-      //int numChannels = mmc.getNumberOfCameraChannels();
       mmc.stopSequenceAcquisition();
       mmc.startContinuousSequenceAcquisition(0);
       while(running.get()) {
         try {
           Thread.sleep(30);
-          TaggedImage image = mmc.getLastTaggedImage();
-          liveImageQueue.put(image);
+          if (mmc.getRemainingImageCount() > 0) {
+            TaggedImage image = mmc.getLastTaggedImage();
+            liveImageQueue.put(image);
+          }
         } catch (e) {
           print(e.message);
         }
